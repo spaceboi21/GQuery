@@ -1,0 +1,57 @@
+# XIA — Docker Compose
+#
+# Quick start:
+#   1. Put your OpenAI / Anthropic key in .env (XIA_LLM_API_KEY=...)
+#   2. Set XIA_DATA_PATH in .env to the host folder of your .xlsx/.csv files
+#   3. docker compose up --build
+#   4. Open http://localhost:8000
+#
+# Live-reload dev mode (mounts ./src and ./frontend, restarts on change):
+#   docker compose --profile dev up xia-dev --build
+#
+# NOTE: do not run `xia` and `xia-dev` simultaneously; they share port 8000.
+
+# Shared base — anchored so prod + dev stay in lock-step.
+x-xia-base: &xia-base
+  build: .
+  image: xia:latest
+  ports:
+    - "${XIA_HOST_PORT:-8000}:8000"
+  environment:
+    XIA_LLM_PROVIDER: ${XIA_LLM_PROVIDER:-openai}
+    XIA_LLM_MODEL: ${XIA_LLM_MODEL:-gpt-4o-mini}
+    XIA_LLM_API_KEY: ${XIA_LLM_API_KEY:-}
+    XIA_LLM_BASE_URL: ${XIA_LLM_BASE_URL:-}
+    # Inside the container we always live at /data and listen on 0.0.0.0.
+    # The .env file's XIA_DATA_PATH / XIA_APP_HOST refer to the HOST machine
+    # and are translated by Compose (see volume mount below).
+    XIA_DATA_PATH: /data
+    XIA_APP_HOST: 0.0.0.0
+    XIA_APP_PORT: "8000"
+    XIA_OPEN_BROWSER: "0"
+  restart: unless-stopped
+
+services:
+  # Production-ish: bake the code into the image, no live reload.
+  xia:
+    <<: *xia-base
+    container_name: xia
+    volumes:
+      # ${XIA_DATA_PATH} resolves on the HOST (from .env), bind-mounted to /data
+      # inside the container. Falls back to ./data if unset.
+      - ${XIA_DATA_PATH:-./data}:/data
+
+  # Live-reload development. Source is volume-mounted so edits hit instantly.
+  # Activate with:  docker compose --profile dev up xia-dev
+  xia-dev:
+    <<: *xia-base
+    profiles: ["dev"]
+    container_name: xia-dev
+    volumes:
+      - ${XIA_DATA_PATH:-./data}:/data
+      - ./src:/app/src
+      - ./frontend:/app/frontend
+    command: >
+      python -m uvicorn src.api:app
+      --host 0.0.0.0 --port 8000
+      --reload --reload-dir /app/src

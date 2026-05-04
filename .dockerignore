@@ -1,0 +1,58 @@
+# Anything not needed at runtime — keeps image small and `docker build` fast.
+
+# Local virtual env (huge, irrelevant)
+venv/
+.venv/
+env/
+
+# Caches & build artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+*.egg-info/
+build/
+dist/
+
+# Editor / IDE
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Local data — must be bind-mounted at runtime, never baked in.
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+
+# Secrets — passed at runtime via Compose, not baked in.
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Docker meta
+Dockerfile
+docker-compose.yml
+.dockerignore

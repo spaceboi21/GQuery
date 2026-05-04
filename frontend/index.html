@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XIA — Excel Intelligence Agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#0d1117', 1: '#161b22', 2: '#21262d', 3: '#30363d' },
+            accent: { DEFAULT: '#2f81f7', hover: '#388bfd' },
+            border: '#30363d',
+            muted: '#8b949e',
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        },
+      },
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    html, body { background: #0d1117; color: #e6edf3; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    .prose-chat { line-height: 1.65; }
+    .prose-chat h1,.prose-chat h2,.prose-chat h3 { font-weight:600; margin:1rem 0 .5rem; color:#e6edf3; }
+    .prose-chat h1{font-size:1.2rem} .prose-chat h2{font-size:1.05rem} .prose-chat h3{font-size:.95rem}
+    .prose-chat p { margin: .4rem 0; }
+    .prose-chat ul,.prose-chat ol { margin:.4rem 0; padding-left:1.4rem; }
+    .prose-chat li { margin:.2rem 0; }
+    .prose-chat code { background:#161b22; padding:.1rem .3rem; border-radius:.3rem; font-size:.8rem; font-family:monospace; color:#79c0ff; }
+    .prose-chat pre { background:#161b22; border:1px solid #30363d; border-radius:.5rem; padding:1rem; overflow-x:auto; margin:.6rem 0; }
+    .prose-chat pre code { background:none; padding:0; color:inherit; }
+    .prose-chat strong { color:#e6edf3; font-weight:600; }
+    .prose-chat table { width:100%; border-collapse:collapse; margin:.6rem 0; font-size:.82rem; }
+    .prose-chat th { background:#161b22; padding:.4rem .6rem; text-align:left; border:1px solid #30363d; color:#8b949e; font-weight:500; }
+    .prose-chat td { padding:.35rem .6rem; border:1px solid #21262d; }
+    .prose-chat tr:hover td { background:#161b22; }
+    .prose-chat blockquote { border-left:3px solid #30363d; padding-left:.8rem; color:#8b949e; margin:.4rem 0; }
+    .tool-badge { display:inline-flex; align-items:center; gap:.3rem; font-size:.72rem; padding:.2rem .5rem; border-radius:999px; font-family:monospace; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn .2s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+    textarea:focus { outline:none; }
+    .file-item:hover .file-actions { opacity:1; }
+    .file-actions { opacity:0; transition:opacity .15s; }
+    .result-card { background:#161b22; border:1px solid #30363d; border-radius:.5rem; padding:.75rem; margin:.5rem 0; }
+    .result-card .kv { display:flex; gap:.5rem; padding:.2rem 0; border-bottom:1px solid #21262d; font-size:.82rem; }
+    .result-card .kv:last-child { border-bottom:none; }
+    .result-card .key { color:#8b949e; min-width:160px; font-family:monospace; }
+    .result-card .val { color:#e6edf3; word-break:break-all; }
+
+    /* Spreadsheet grid */
+    .sheet-grid-wrap { overflow:auto; background:#0d1117; }
+    .sheet-grid { border-collapse:collapse; font-size:12px; font-family:'Inter',system-ui,sans-serif; }
+    .sheet-grid th, .sheet-grid td { border:1px solid #21262d; padding:0; position:relative; }
+    .sheet-grid th { background:#161b22; color:#8b949e; font-weight:500; font-size:11px; text-align:center; user-select:none; position:sticky; z-index:2; }
+    .sheet-grid thead th { top:0; }
+    .sheet-grid th.corner { left:0; top:0; z-index:3; min-width:48px; width:48px; }
+    .sheet-grid th.row-num { left:0; z-index:1; min-width:48px; width:48px; padding:2px 8px; color:#6e7681; }
+    .sheet-grid th.col-letter { min-width:110px; padding:4px 8px; }
+    .sheet-grid td { min-width:110px; max-width:240px; height:24px; padding:3px 8px; cursor:cell; color:#e6edf3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; background:#0d1117; }
+    .sheet-grid td:hover { background:#161b22; }
+    .sheet-grid td.selected { background:rgba(47,129,247,.15); outline:2px solid #2f81f7; outline-offset:-2px; z-index:1; }
+    .sheet-grid td.in-range { background:rgba(47,129,247,.08); }
+    .sheet-grid td.header-row { background:#161b22; font-weight:600; color:#79c0ff; }
+    .sheet-grid tr.detected-header td { background:#161b22; color:#79c0ff; font-weight:600; }
+
+    /* Thinking timeline */
+    .thinking-panel { border-left:2px solid #30363d; padding-left:12px; margin-left:4px; }
+    .thinking-step { padding:6px 0; font-size:11px; }
+    .thinking-step:not(:last-child) { border-bottom:1px solid #21262d; }
+    .thinking-step .step-time { color:#6e7681; font-size:10px; font-family:monospace; }
+    .thinking-step .step-content { background:#161b22; border:1px solid #21262d; border-radius:4px; padding:8px; margin-top:4px; font-family:monospace; font-size:10.5px; color:#8b949e; max-height:240px; overflow:auto; white-space:pre-wrap; }
+
+    /* Reference chips */
+    .ref-chip { display:inline-flex; align-items:center; gap:4px; background:rgba(47,129,247,.15); border:1px solid rgba(47,129,247,.35); color:#79c0ff; font-family:monospace; font-size:10.5px; padding:2px 6px; border-radius:4px; }
+    .ref-chip button { color:#79c0ff; opacity:.6; }
+    .ref-chip button:hover { opacity:1; }
+
+    /* Sheet tabs */
+    .sheet-tab { padding:6px 14px; font-size:12px; cursor:pointer; border-right:1px solid #21262d; color:#8b949e; background:#0d1117; user-select:none; white-space:nowrap; }
+    .sheet-tab:hover { color:#e6edf3; background:#161b22; }
+    .sheet-tab.active { color:#e6edf3; background:#161b22; border-bottom:2px solid #2f81f7; }
+
+    /* View toggle */
+    .view-toggle { display:inline-flex; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:2px; }
+    .view-toggle button { padding:4px 10px; font-size:11px; color:#8b949e; border-radius:4px; display:flex; align-items:center; gap:4px; transition:all .15s; }
+    .view-toggle button.active { background:#2f81f7; color:#fff; }
+    .view-toggle button:not(.active):hover { color:#e6edf3; }
+
+    /* Graph canvas */
+    .graph-canvas { background:#0d1117; position:relative; }
+    .graph-legend { position:absolute; top:12px; left:12px; background:rgba(22,27,34,.92); border:1px solid #30363d; border-radius:8px; padding:10px 12px; backdrop-filter:blur(8px); z-index:10; font-size:11px; }
+    .graph-legend .legend-row { display:flex; align-items:center; gap:8px; padding:2px 0; }
+    .graph-legend .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .graph-legend .line { width:18px; height:2px; display:inline-block; }
+    .graph-controls { position:absolute; top:12px; right:12px; display:flex; gap:6px; z-index:10; }
+    .graph-controls button { background:rgba(22,27,34,.92); border:1px solid #30363d; color:#8b949e; padding:5px 10px; font-size:11px; border-radius:6px; backdrop-filter:blur(8px); transition:all .15s; }
+    .graph-controls button:hover { color:#e6edf3; border-color:#2f81f7; }
+    .graph-controls button.active { color:#2f81f7; border-color:#2f81f7; }
+    .node-detail-panel { position:absolute; right:12px; bottom:12px; width:320px; max-height:60vh; background:rgba(22,27,34,.96); border:1px solid #30363d; border-radius:10px; padding:14px; backdrop-filter:blur(10px); z-index:10; overflow-y:auto; }
+
+    /* Pivot badge */
+    .pivot-badge { display:inline-flex; align-items:center; gap:3px; font-size:9.5px; padding:1px 5px; border-radius:3px; background:rgba(168,85,247,.15); color:#c084fc; border:1px solid rgba(168,85,247,.3); font-family:monospace; }
+  </style>
+</head>
+<body class="h-full dark font-sans" x-data="xia()" x-init="init()">
+
+<!-- ── App Shell ─────────────────────────────────────────────────── -->
+<div class="flex h-screen overflow-hidden">
+
+  <!-- ── Left Sidebar: File Tree ─────────────────────────────── -->
+  <aside class="w-60 flex-shrink-0 bg-surface-1 border-r border-border flex flex-col">
+
+    <!-- Header -->
+    <div class="flex items-center gap-2 px-3 py-3 border-b border-border">
+      <div class="w-6 h-6 rounded bg-accent flex items-center justify-center text-white text-xs font-bold">X</div>
+      <span class="font-semibold text-sm tracking-tight">XIA</span>
+      <span class="ml-auto text-xs text-muted">v0.1</span>
+    </div>
+
+    <!-- Index buttons -->
+    <div class="px-3 py-2 border-b border-border flex gap-1.5">
+      <button @click="runIndex(false)" :disabled="indexing"
+        title="Index new/changed files"
+        class="flex-1 text-xs px-2 py-1.5 rounded bg-surface-2 hover:bg-surface-3 border border-border flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50">
+        <svg :class="indexing ? 'spin' : ''" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span x-text="indexing ? 'Indexing…' : 'Index Files'"></span>
+      </button>
+      <button @click="runIndex(true)" :disabled="indexing"
+        title="Force re-index ALL files from scratch (fixes headers)"
+        class="text-xs px-2 py-1.5 rounded bg-amber-900/40 hover:bg-amber-800/50 border border-amber-700/50 text-amber-300 flex items-center justify-center transition-colors disabled:opacity-50">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Search files -->
+    <div class="px-3 py-2 border-b border-border">
+      <input x-model.debounce.300ms="fileSearch" @input="searchFiles()"
+        class="w-full bg-surface-2 border border-border rounded px-2 py-1 text-xs placeholder-muted focus:border-accent transition-colors"
+        placeholder="Search files…" />
+    </div>
+
+    <!-- File list -->
+    <div class="flex-1 overflow-y-auto py-1">
+      <template x-if="files.length === 0">
+        <div class="px-3 py-8 text-center text-muted text-xs">
+          <div class="text-2xl mb-2">📂</div>
+          <div>No files indexed yet.</div>
+          <div class="mt-1 opacity-70">Click "Index Files" to start.</div>
+        </div>
+      </template>
+      <template x-for="file in files" :key="file.path">
+        <div class="file-item px-2 py-1">
+          <button @click="selectFile(file)"
+            :class="selectedFile?.path === file.path ? 'bg-surface-2 text-white' : 'text-[#e6edf3] hover:bg-surface-2'"
+            class="w-full text-left px-2 py-1.5 rounded text-xs flex items-start gap-2 transition-colors group">
+            <span class="mt-0.5 flex-shrink-0" x-text="['xlsx','xlsm','xls'].includes(file.file_type) ? '📗' : '📄'"></span>
+            <div class="flex-1 min-w-0">
+              <div class="truncate font-medium" x-text="file.name"></div>
+              <div class="text-muted text-[10px] mt-0.5 flex gap-2">
+                <span x-text="file.size_mb + ' MB'"></span>
+                <span x-text="file.sheets?.length + ' sheet' + (file.sheets?.length !== 1 ? 's' : '')"></span>
+              </div>
+            </div>
+          </button>
+        </div>
+      </template>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="px-3 py-2 border-t border-border text-[10px] text-muted flex gap-3">
+      <span x-text="stats.total_files + ' files'"></span>
+      <span x-text="stats.total_sheets + ' sheets'"></span>
+      <span x-text="stats.total_edges + ' links'"></span>
+    </div>
+  </aside>
+
+  <!-- ── Center: Unified Main Area ────────────────────────────── -->
+  <main class="flex-1 flex flex-col min-w-0 bg-surface-1">
+
+    <!-- Shared toolbar with view toggle -->
+    <div class="flex items-center px-4 py-2 border-b border-border bg-surface-1 gap-3 flex-shrink-0">
+      <div class="view-toggle">
+        <button @click="setView('sheet')" :class="mainView === 'sheet' ? 'active' : ''">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+          Data
+        </button>
+        <button @click="setView('graph')" :class="mainView === 'graph' ? 'active' : ''">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+          Relations
+        </button>
+      </div>
+      <template x-if="mainView === 'sheet' && selectedFile">
+        <div class="flex-1 text-sm font-medium truncate flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-green-500/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2a4 4 0 014-4h4M5 21V5a2 2 0 012-2h7l5 5v13a2 2 0 01-2 2H7a2 2 0 01-2-2z"/></svg>
+          <span x-text="selectedFile?.name"></span>
+        </div>
+      </template>
+      <template x-if="mainView === 'graph'">
+        <div class="flex-1 text-sm font-medium truncate">Knowledge graph</div>
+      </template>
+      <template x-if="mainView === 'sheet' && !selectedFile">
+        <div class="flex-1"></div>
+      </template>
+      <template x-if="mainView === 'sheet' && sheetData">
+        <span class="text-[10px] text-muted" x-text="sheetData.total_rows?.toLocaleString() + ' rows · ' + sheetData.total_cols + ' cols'"></span>
+      </template>
+      <template x-if="mainView === 'sheet' && selectedFile">
+        <button @click="selectedFile = null; sheetData = null"
+          class="text-xs text-muted hover:text-white transition-colors px-2 py-1 rounded hover:bg-surface-2">Close</button>
+      </template>
+    </div>
+
+    <!-- Graph view -->
+    <div x-show="mainView === 'graph'" class="flex-1 graph-canvas relative overflow-hidden" x-cloak>
+      <!-- Legend -->
+      <div class="graph-legend">
+        <div class="font-semibold text-muted mb-1.5 text-[10px] uppercase tracking-wider">Nodes</div>
+        <div class="legend-row"><span class="dot" style="background:#79c0ff"></span>File</div>
+        <div class="legend-row"><span class="dot" style="background:#f59e0b"></span>Sheet</div>
+        <div class="legend-row"><span class="dot" style="background:#c084fc"></span>Pivot summary</div>
+        <div class="legend-row"><span class="dot" style="background:#34d399"></span>Detail</div>
+        <div class="font-semibold text-muted mt-2 mb-1.5 text-[10px] uppercase tracking-wider">Edges</div>
+        <div class="legend-row"><span class="line" style="background:#30363d"></span>Contains sheet</div>
+        <div class="legend-row"><span class="line" style="background:#2f81f7"></span>Shares columns</div>
+        <div class="legend-row"><span class="line" style="background:#34d399"></span>Aggregates from</div>
+      </div>
+
+      <!-- Controls -->
+      <div class="graph-controls">
+        <button @click="graphPhysics = !graphPhysics; updateGraphPhysics()" :class="graphPhysics ? 'active' : ''"
+                title="Toggle physics animation">
+          <span x-text="graphPhysics ? 'Pause' : 'Animate'"></span>
+        </button>
+        <button @click="fitGraph()">Fit</button>
+        <button @click="loadGraph()" title="Reload graph data">Refresh</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="absolute bottom-3 left-3 text-[10px] text-muted font-mono" x-show="graphStats">
+        <span x-text="graphStats?.files + ' files · ' + graphStats?.sheets + ' sheets · ' + graphStats?.shares_edges + ' column links · ' + graphStats?.aggregates_edges + ' aggregations'"></span>
+      </div>
+
+      <!-- Node detail -->
+      <template x-if="selectedNode">
+        <div class="node-detail-panel fade-in">
+          <div class="flex items-start gap-2 mb-2">
+            <div class="flex-1 min-w-0">
+              <div class="text-[10px] uppercase tracking-wider text-muted" x-text="selectedNode.type + (selectedNode.sheet_type && selectedNode.sheet_type !== 'data' ? ' · ' + selectedNode.sheet_type : '')"></div>
+              <div class="text-sm font-medium truncate" x-text="selectedNode.label"></div>
+              <div class="text-[10px] text-muted mt-0.5 font-mono truncate" x-text="selectedNode.file_path"></div>
+            </div>
+            <button @click="selectedNode = null" class="text-muted hover:text-white">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <template x-if="selectedNode.row_count > 0">
+            <div class="flex gap-3 text-[11px] mb-3 text-muted">
+              <span><span class="text-white font-mono" x-text="selectedNode.row_count?.toLocaleString()"></span> rows</span>
+              <span><span class="text-white font-mono" x-text="selectedNode.col_count"></span> cols</span>
+            </div>
+          </template>
+          <template x-if="selectedNodeEdges.length > 0">
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-muted mb-1.5">Connected via</div>
+              <template x-for="(e, ei) in selectedNodeEdges" :key="ei">
+                <div class="text-[11px] px-2 py-1.5 rounded bg-surface-2 mb-1 border-l-2"
+                     :style="`border-color: ${edgeColor(e.type)}`">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono text-[10px] opacity-70" x-text="e.type.replace('_', ' ').toLowerCase()"></span>
+                    <span class="opacity-40">→</span>
+                    <span class="truncate text-white/80" x-text="edgeOtherLabel(e)"></span>
+                  </div>
+                  <template x-if="e.shared_columns?.length">
+                    <div class="mt-1 text-muted text-[10px] font-mono truncate" x-text="e.shared_columns.slice(0, 4).join(', ') + (e.shared_columns.length > 4 ? ' +' + (e.shared_columns.length-4) : '')"></div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
+          <template x-if="selectedNode.type === 'sheet' && selectedNode.file_path">
+            <button @click="openNodeInSheet()"
+              class="mt-2 w-full text-[11px] px-3 py-1.5 rounded bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 transition-colors">
+              Open in data view
+            </button>
+          </template>
+        </div>
+      </template>
+
+      <!-- Empty state -->
+      <template x-if="graphStats && graphStats.sheets === 0">
+        <div class="absolute inset-0 flex items-center justify-center flex-col text-center px-8 pointer-events-none">
+          <div class="text-3xl mb-3 opacity-50">🔗</div>
+          <div class="text-sm text-muted">No indexed sheets yet</div>
+          <div class="text-[11px] text-muted/70 mt-1">Index your data folder first.</div>
+        </div>
+      </template>
+
+      <!-- Canvas target -->
+      <div x-ref="graphNetwork" class="absolute inset-0"></div>
+    </div>
+
+    <!-- Sheet overlay (existing) -->
+    <div x-show="mainView === 'sheet' && selectedFile" class="flex-1 flex flex-col min-w-0" x-cloak>
+
+    <!-- Formula bar + selection info -->
+    <div class="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-surface-1 text-xs">
+      <span class="font-mono text-muted min-w-[90px]" x-text="getSelectionA1() || '—'"></span>
+      <span class="text-muted/40">·</span>
+      <span class="font-mono text-white/70 truncate flex-1" x-text="getSelectionValue()"></span>
+      <template x-if="getSelectionA1()">
+        <button @click="addSelectionToChat()"
+          class="text-xs px-2 py-1 rounded bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 transition-colors flex items-center gap-1.5">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Add to chat
+        </button>
+      </template>
+    </div>
+
+    <!-- Grid -->
+    <div class="sheet-grid-wrap flex-1" @click.self="clearSelection()">
+      <template x-if="sheetLoading">
+        <div class="flex items-center justify-center h-full text-xs text-muted">
+          <svg class="w-4 h-4 spin mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2" opacity=".3"/><path d="M12 2a10 10 0 0110 10" stroke-width="2" stroke-linecap="round"/></svg>
+          Loading sheet…
+        </div>
+      </template>
+      <template x-if="sheetData && !sheetLoading">
+        <table class="sheet-grid">
+          <thead>
+            <tr>
+              <th class="corner"></th>
+              <template x-for="(h, ci) in sheetData.headers" :key="ci">
+                <th class="col-letter" x-text="h"></th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(row, ri) in sheetData.rows" :key="ri">
+              <tr :class="(sheetData.offset + ri) === detectedHeaderRow ? 'detected-header' : ''">
+                <th class="row-num" x-text="sheetData.offset + ri + 1"></th>
+                <template x-for="(cell, ci) in row" :key="ci">
+                  <td
+                    :class="cellClass(ri, ci)"
+                    @mousedown.prevent="onCellDown(ri, ci, $event)"
+                    @mouseover="onCellOver(ri, ci, $event)"
+                    @mouseup="onCellUp()"
+                    x-text="cell"></td>
+                </template>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </template>
+    </div>
+
+    <!-- Sheet tabs + pagination -->
+    <div class="flex items-center border-t border-border bg-surface-1 overflow-hidden">
+      <div class="flex overflow-x-auto flex-1">
+        <template x-for="sn in (sheetData?.all_sheets || [])" :key="sn">
+          <div class="sheet-tab flex items-center gap-1.5" :class="sn === sheetData.sheet_name ? 'active' : ''"
+               @click="loadSheet(selectedFile.path, sn)">
+            <span x-text="sn"></span>
+            <template x-if="isPivotSheet(sn)">
+              <span class="pivot-badge" title="Contains a pivot table">
+                <svg class="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                pivot
+              </span>
+            </template>
+          </div>
+        </template>
+      </div>
+      <template x-if="sheetData && (sheetData.offset + sheetData.rows.length) < sheetData.total_rows">
+        <button @click="loadMoreRows()"
+          class="text-[11px] px-3 py-1.5 text-accent hover:bg-surface-2 border-l border-border transition-colors">
+          Load next
+          <span x-text="Math.min(sheetData.limit, sheetData.total_rows - (sheetData.offset + sheetData.rows.length))"></span>
+          rows
+        </button>
+      </template>
+    </div>
+    </div>
+
+    <!-- Welcome (when sheet view is active but no file is open) -->
+    <div x-show="mainView === 'sheet' && !selectedFile" class="flex-1 flex flex-col min-w-0 items-center justify-center">
+    <div class="text-center fade-in max-w-md px-8">
+      <div class="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/30 flex items-center justify-center mx-auto mb-6 text-3xl">📊</div>
+      <h2 class="text-xl font-semibold mb-3">Open a file to start</h2>
+      <p class="text-muted text-sm mb-8">Pick any indexed file from the sidebar. You'll see a live spreadsheet view here and can select cell ranges to reference them in chat.</p>
+      <div class="space-y-2">
+        <template x-for="suggestion in suggestions" :key="suggestion">
+          <button @click="sendSuggestion(suggestion)"
+            class="w-full text-left text-xs px-3 py-2 rounded-lg bg-surface-1 border border-border hover:border-accent/50 hover:bg-surface-2 transition-all text-muted hover:text-white"
+            x-text="suggestion"></button>
+        </template>
+      </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ── Right Panel: Chat ───────────────────────────────────── -->
+  <aside class="w-[420px] flex-shrink-0 bg-surface-1 border-l border-border flex flex-col overflow-hidden">
+
+    <!-- Chat header -->
+    <div class="flex items-center px-3 py-2.5 border-b border-border gap-2">
+      <svg class="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+      <span class="text-sm font-medium flex-1">Chat</span>
+      <button @click="showSchema = !showSchema" :class="showSchema ? 'text-accent' : 'text-muted'"
+        class="hover:text-white transition-colors px-2 py-1 rounded hover:bg-surface-2 text-[10px]"
+        title="Toggle schema panel">Schema</button>
+      <button @click="clearChat()" class="text-[10px] text-muted hover:text-white transition-colors px-2 py-1 rounded hover:bg-surface-2">Clear</button>
+    </div>
+
+    <!-- Collapsible schema strip -->
+    <template x-if="showSchema && schemaDetail">
+      <div class="border-b border-border bg-surface-1 max-h-72 overflow-y-auto py-1">
+        <template x-for="sheet in (schemaDetail?.sheets || [])" :key="sheet.sheet_name">
+          <div class="px-3 py-1">
+            <button @click="toggleSheet(sheet.sheet_name)"
+              class="w-full flex items-center gap-1.5 text-[10px] font-semibold text-muted hover:text-white py-0.5 transition-colors">
+              <svg :class="openSheets.includes(sheet.sheet_name) ? 'rotate-90' : ''" class="w-2.5 h-2.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              <span class="truncate" x-text="sheet.sheet_name"></span>
+              <template x-if="sheet.pivot_tables && sheet.pivot_tables.length > 0">
+                <span class="pivot-badge" title="Pivot table detected">
+                  <svg class="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                  pivot
+                </span>
+              </template>
+              <span class="ml-auto opacity-60" x-text="sheet.row_count?.toLocaleString()"></span>
+            </button>
+            <template x-if="openSheets.includes(sheet.sheet_name)">
+              <div class="mt-0.5 space-y-0 fade-in">
+                <!-- Pivot structure cards -->
+                <template x-for="(piv, pi) in (sheet.pivot_tables || [])" :key="pi">
+                  <div class="mt-1 mb-1.5 mx-1 px-2 py-1.5 rounded border border-purple-500/20 bg-purple-500/5">
+                    <div class="flex items-center gap-1.5 mb-1">
+                      <svg class="w-2.5 h-2.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M9 5v15"/></svg>
+                      <span class="text-[10px] text-purple-300 font-semibold" x-text="piv.name || 'Pivot table'"></span>
+                      <span class="text-[9px] font-mono text-muted ml-auto" x-text="piv.location"></span>
+                    </div>
+                    <template x-if="piv.row_fields?.length">
+                      <div class="text-[9.5px] font-mono"><span class="text-muted">rows:</span> <span class="text-blue-300" x-text="piv.row_fields.join(' / ')"></span></div>
+                    </template>
+                    <template x-if="piv.col_fields?.length">
+                      <div class="text-[9.5px] font-mono"><span class="text-muted">cols:</span> <span class="text-amber-300" x-text="piv.col_fields.join(' / ')"></span></div>
+                    </template>
+                    <template x-if="piv.page_fields?.length">
+                      <div class="text-[9.5px] font-mono"><span class="text-muted">filters:</span> <span class="text-pink-300" x-text="piv.page_fields.join(' / ')"></span></div>
+                    </template>
+                    <template x-if="piv.data_fields?.length">
+                      <div class="text-[9.5px] font-mono"><span class="text-muted">values:</span>
+                        <span class="text-green-300" x-text="piv.data_fields.map(d => `${d.agg}(${d.field})`).join(', ')"></span>
+                      </div>
+                    </template>
+                    <template x-if="piv.source_ref">
+                      <div class="text-[9.5px] font-mono mt-0.5"><span class="text-muted">source:</span> <span class="text-white/70" x-text="piv.source_ref"></span></div>
+                    </template>
+                  </div>
+                </template>
+                <!-- Columns -->
+                <template x-for="col in sheet.columns.slice(0, 30)" :key="col.name">
+                  <div class="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-surface-2 text-[10.5px] cursor-pointer"
+                       @click="insertColumnRef(col.name)">
+                    <span class="font-mono truncate flex-1" x-text="col.name"></span>
+                    <span class="text-[9px] font-mono px-1 rounded"
+                      :class="dtypeColor(col.dtype)"
+                      x-text="shortDtype(col.dtype)"></span>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <!-- Messages -->
+    <div class="flex-1 overflow-y-auto px-3 py-3 space-y-3" id="chat-scroll">
+
+      <!-- Welcome -->
+      <template x-if="messages.length === 0">
+        <div class="flex flex-col items-center justify-center h-full text-center pb-16 fade-in">
+          <div class="w-12 h-12 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center mb-4">
+            <span class="text-2xl">📊</span>
+          </div>
+          <h2 class="text-lg font-semibold mb-2">Ask anything about your data</h2>
+          <p class="text-muted text-sm max-w-sm">XIA indexes your Excel and CSV files locally, then uses AI to answer business questions — your raw data never leaves your machine.</p>
+          <div class="mt-6 grid grid-cols-1 gap-2 w-full max-w-sm">
+            <template x-for="suggestion in suggestions" :key="suggestion">
+              <button @click="sendSuggestion(suggestion)"
+                class="text-left text-xs px-3 py-2 rounded-lg bg-surface-1 border border-border hover:border-accent/50 hover:bg-surface-2 transition-all text-muted hover:text-white"
+                x-text="suggestion"></button>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <!-- Message list -->
+      <template x-for="(msg, idx) in messages" :key="idx">
+        <div class="fade-in">
+          <!-- User -->
+          <template x-if="msg.role === 'user'">
+            <div class="flex justify-end">
+              <div class="max-w-[75%] bg-accent/20 border border-accent/30 rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm" x-text="msg.content"></div>
+            </div>
+          </template>
+
+          <!-- Assistant -->
+          <template x-if="msg.role === 'assistant'">
+            <div class="flex gap-2 items-start">
+              <div class="w-6 h-6 rounded-lg bg-surface-2 border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span class="text-xs">X</span>
+              </div>
+              <div class="flex-1 min-w-0 space-y-2">
+
+                <!-- Thinking header (collapsible) -->
+                <template x-if="msg.events.length > 0">
+                  <div>
+                    <button @click="msg.thinkingOpen = !msg.thinkingOpen"
+                      class="flex items-center gap-1.5 text-[11px] text-muted hover:text-white transition-colors">
+                      <svg :class="msg.thinkingOpen ? 'rotate-90' : ''" class="w-2.5 h-2.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                      <template x-if="msg.streaming">
+                        <span class="flex items-center gap-1.5">
+                          <svg class="w-2.5 h-2.5 spin text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2" opacity=".3"/><path d="M12 2a10 10 0 0110 10" stroke-width="2" stroke-linecap="round"/></svg>
+                          <span x-text="currentStepLabel(msg)"></span>
+                        </span>
+                      </template>
+                      <template x-if="!msg.streaming">
+                        <span x-text="`Thought for ${countSteps(msg)} ${countSteps(msg) === 1 ? 'step' : 'steps'}` + (msg.elapsedMs ? ` · ${(msg.elapsedMs / 1000).toFixed(1)}s` : '')"></span>
+                      </template>
+                    </button>
+
+                    <!-- Timeline body -->
+                    <template x-if="msg.thinkingOpen">
+                      <div class="thinking-panel mt-2 fade-in">
+                        <template x-for="(ev, ei) in msg.events" :key="ei">
+                          <div class="thinking-step">
+                            <template x-if="ev.type === 'tool_start'">
+                              <div class="flex items-center gap-2">
+                                <svg class="w-3 h-3 spin text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2" opacity=".3"/><path d="M12 2a10 10 0 0110 10" stroke-width="2" stroke-linecap="round"/></svg>
+                                <span class="text-yellow-400 text-[11px]" x-text="toolLabel(ev.name)"></span>
+                                <span class="text-muted text-[10px] font-mono truncate" x-text="formatArgs(ev.args)"></span>
+                              </div>
+                            </template>
+                            <template x-if="ev.type === 'tool_end'">
+                              <div>
+                                <div class="flex items-center gap-2">
+                                  <svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                  <span class="text-green-400 text-[11px]" x-text="toolLabel(ev.name)"></span>
+                                  <span class="step-time ml-auto" x-text="ev.ms ? ev.ms + 'ms' : ''"></span>
+                                </div>
+                                <!-- Show the script for run_analysis -->
+                                <template x-if="ev.name === 'run_analysis' && ev.args?.code">
+                                  <pre class="step-content" x-text="ev.args.code"></pre>
+                                </template>
+                                <!-- Show writes for modify_sheet -->
+                                <template x-if="ev.name === 'modify_sheet'">
+                                  <pre class="step-content" x-text="formatWrites(ev.args?.writes)"></pre>
+                                </template>
+                                <!-- Show range read -->
+                                <template x-if="ev.name === 'read_cell_range'">
+                                  <pre class="step-content" x-text="`range: ${ev.args?.range} · returned ${ev.result?.row_count || 0}×${ev.result?.col_count || 0} cells`"></pre>
+                                </template>
+                              </div>
+                            </template>
+                            <template x-if="ev.type === 'error'">
+                              <div class="flex items-center gap-2 text-red-400 text-[11px]">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <span x-text="ev.message"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+
+                <!-- Analysis result cards (always visible, not in thinking panel) -->
+                <template x-for="(ev, ei) in msg.events.filter(e => e.type === 'tool_end' && e.name === 'run_analysis')" :key="ei">
+                  <div>
+                    <template x-if="resultEntries(ev.result?.result).length > 0">
+                      <div class="result-card text-xs">
+                        <template x-for="pair in resultEntries(ev.result.result)" :key="pair[0]">
+                          <div class="kv">
+                            <span class="key" x-text="pair[0]"></span>
+                            <span class="val" x-text="typeof pair[1] === 'object' ? JSON.stringify(pair[1]) : String(pair[1])"></span>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <template x-for="(chartJson, ci) in (ev.result?.result?._chart_jsons || [])" :key="ci">
+                      <div class="rounded-lg overflow-hidden border border-border bg-surface-2 mt-2"
+                           x-init="$nextTick(() => renderChart($el, chartJson))">
+                      </div>
+                    </template>
+                  </div>
+                </template>
+
+                <!-- Write confirmations -->
+                <template x-for="(ev, ei) in msg.events.filter(e => e.type === 'tool_end' && e.name === 'modify_sheet')" :key="ei">
+                  <div class="text-xs flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    <span>Wrote <span x-text="ev.result?.writes_applied || 0"></span> cells to <span class="font-mono" x-text="ev.result?.sheet"></span></span>
+                    <button @click="if(selectedFile) loadSheet(selectedFile.path, sheetData?.sheet_name)" class="ml-auto text-[10px] underline opacity-80 hover:opacity-100">Reload sheet</button>
+                  </div>
+                </template>
+
+                <!-- Text response -->
+                <template x-if="msg.content">
+                  <div class="prose-chat text-sm text-[#e6edf3]" x-html="renderMarkdown(msg.content)"></div>
+                </template>
+
+                <!-- Streaming cursor -->
+                <template x-if="msg.streaming">
+                  <span class="inline-block w-2 h-4 bg-accent/70 rounded-sm animate-pulse ml-0.5"></span>
+                </template>
+
+                <!-- Token / cost pill -->
+                <template x-if="msg.usage && !msg.streaming">
+                  <div class="flex items-center gap-1.5 pt-1 select-none flex-wrap"
+                       :title="`Input: ${fmtTokens(msg.usage.prompt_tokens)} · Output: ${fmtTokens(msg.usage.completion_tokens)} · Model: ${msg.usage.model}`">
+                    <svg class="w-2.5 h-2.5 text-muted/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <span class="text-[10px] text-muted/70 whitespace-nowrap">
+                      <span x-text="fmtTokens(msg.usage.total_tokens)"></span> tokens
+                      <span class="opacity-50 mx-0.5">·</span>
+                      <span x-text="fmtCost(msg.usage.cost_usd, msg.usage.provider)"></span>
+                    </span>
+                  </div>
+                </template>
+
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <!-- Input bar -->
+    <div class="px-3 py-2.5 border-t border-border bg-surface-1">
+      <div class="bg-surface-2 border border-border rounded-xl px-2.5 py-2 focus-within:border-accent/60 transition-colors">
+
+        <!-- Reference chips -->
+        <template x-if="references.length > 0">
+          <div class="flex flex-wrap gap-1 mb-2">
+            <template x-for="(ref, ri) in references" :key="ri">
+              <div class="ref-chip">
+                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                <span x-text="ref.label"></span>
+                <button @click="removeReference(ri)" class="ml-0.5">
+                  <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <div class="flex gap-2 items-end">
+          <textarea x-model="input" @keydown.enter.exact.prevent="send()"
+            @input="autoResize($event)"
+            rows="1"
+            class="flex-1 bg-transparent text-sm resize-none max-h-40 overflow-y-auto text-[#e6edf3] placeholder-muted"
+            :placeholder="references.length > 0 ? 'Ask about the selected cells…' : 'Ask about your data…'"
+            :disabled="streaming"></textarea>
+          <button @click="send()" :disabled="(!input.trim() && references.length === 0) || streaming"
+            class="flex-shrink-0 w-7 h-7 rounded-lg bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors">
+            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m-7 7l7-7 7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mt-1.5 px-1 text-[10px] min-w-0">
+        <span class="text-muted flex-shrink-0">Model:</span>
+        <span class="text-white/60 truncate min-w-0 flex-shrink"
+              :title="currentModel"
+              x-text="currentModel"></span>
+        <template x-if="sessionTokens > 0">
+          <span class="text-muted/60 flex items-center gap-1 ml-auto flex-shrink-0 whitespace-nowrap"
+                :title="`Session total: ${sessionTokens.toLocaleString()} tokens · ${fmtSessionCost(sessionCost)}`">
+            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            <span x-text="fmtTokens(sessionTokens) + ' · ' + fmtSessionCost(sessionCost)"></span>
+          </span>
+        </template>
+        <button @click="showSettings = true"
+          class="text-muted hover:text-accent transition-colors flex-shrink-0"
+          :class="sessionTokens === 0 ? 'ml-auto' : ''"
+          :title="dataPath || 'Set data folder'">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ── Settings Modal ───────────────────────────────────────────── -->
+<div x-show="showSettings" x-cloak
+  class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+  @click.self="showSettings = false">
+  <div class="bg-surface-1 border border-border rounded-xl w-full max-w-md shadow-2xl fade-in">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+      <h2 class="font-semibold text-sm">Settings</h2>
+      <button @click="showSettings = false" class="text-muted hover:text-white">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="px-5 py-4 space-y-4">
+      <div>
+        <label class="text-xs text-muted block mb-1">LLM Provider</label>
+        <select x-model="settingsForm.llm_provider"
+          class="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm focus:border-accent outline-none">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="ollama">Ollama (local)</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-muted block mb-1">Model</label>
+        <input x-model="settingsForm.llm_model"
+          class="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm focus:border-accent outline-none"
+          placeholder="gpt-4o-mini" />
+      </div>
+      <div x-show="settingsForm.llm_provider !== 'ollama'">
+        <label class="text-xs text-muted block mb-1">API Key</label>
+        <input x-model="settingsForm.llm_api_key" type="password"
+          class="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm focus:border-accent outline-none"
+          placeholder="sk-…" />
+      </div>
+      <div x-show="settingsForm.llm_provider === 'ollama'">
+        <label class="text-xs text-muted block mb-1">Base URL</label>
+        <input x-model="settingsForm.llm_base_url"
+          class="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm focus:border-accent outline-none"
+          placeholder="http://localhost:11434/v1" />
+      </div>
+
+      <!-- Data folder -->
+      <div class="pt-1 border-t border-border">
+        <label class="text-xs text-muted block mb-1">Data Folder</label>
+        <div class="flex gap-2">
+          <input x-model="settingsForm.data_path" readonly
+            class="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-white/70 font-mono truncate cursor-default outline-none"
+            placeholder="Click Browse to select a folder…" />
+          <button @click="browseFolder()" :disabled="browsingFolder"
+            class="flex-shrink-0 px-3 py-2 text-xs rounded-lg bg-surface-2 border border-border hover:border-accent/60 hover:text-white transition-colors disabled:opacity-40 flex items-center gap-1.5">
+            <svg :class="browsingFolder ? 'spin' : ''" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h3.586a1 1 0 01.707.293L10.707 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+            </svg>
+            <span x-text="browsingFolder ? '…' : 'Browse'"></span>
+          </button>
+        </div>
+        <p class="text-[10px] text-muted mt-1">After changing, click Save then re-index.</p>
+      </div>
+    </div>
+    <div class="px-5 py-3 border-t border-border flex justify-end gap-2">
+      <button @click="showSettings = false"
+        class="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-surface-2 transition-colors">Cancel</button>
+      <button @click="saveSettings()"
+        class="text-xs px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white transition-colors">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ────────────────────────────────────────────────────── -->
+<div x-show="toast.visible" x-cloak x-transition
+  class="fixed bottom-4 right-4 z-50 px-4 py-2.5 rounded-lg text-sm shadow-lg"
+  :class="toast.type === 'error' ? 'bg-red-900/90 border border-red-700' : 'bg-surface-2 border border-border'"
+  x-text="toast.message"></div>
+
+<!-- ── Script ───────────────────────────────────────────────────── -->
+<script>
+function xia() {
+  return {
+    // State
+    files: [],
+    selectedFile: null,
+    schemaDetail: null,
+    kgEdges: [],
+    openSheets: [],
+    messages: [],
+    input: '',
+    streaming: false,
+    indexing: false,
+    sessionTokens: 0,
+    sessionCost: 0,
+    showSettings: false,
+    fileSearch: '',
+    stats: { total_files: 0, total_sheets: 0, total_edges: 0 },
+    currentProvider: 'openai',
+    currentModel: 'gpt-4o-mini',
+    dataPath: '…',
+    settingsForm: { llm_provider: 'openai', llm_model: 'gpt-4o-mini', llm_api_key: '', llm_base_url: '', data_path: '' },
+    browsingFolder: false,
+    toast: { visible: false, message: '', type: 'info' },
+
+    // Spreadsheet overlay
+    sheetData: null,
+    sheetLoading: false,
+    detectedHeaderRow: -1,
+    selStart: null,       // { r, c } — display indices within current page
+    selEnd: null,
+    selDragging: false,
+    references: [],       // [{ label, file_path, sheet_name, range }]
+    showSchema: false,
+
+    // Main view + graph
+    mainView: 'sheet',         // 'sheet' | 'graph'
+    graphNet: null,            // vis.Network instance
+    graphNodes: null,
+    graphEdges: null,
+    graphStats: null,
+    graphPhysics: true,
+    selectedNode: null,
+    selectedNodeEdges: [],
+
+    suggestions: [
+      'Why did sales drop in Q3?',
+      'Show me the top 10 products by revenue',
+      'Find all records where quantity is negative',
+      'Compare this month vs last month performance',
+    ],
+
+    // ── Init ───────────────────────────────────────────────────
+    async init() {
+      await this.loadStats();
+      await this.loadFiles();
+      await this.loadServerSettings();
+    },
+
+    async loadStats() {
+      try {
+        const r = await fetch('/api/stats');
+        this.stats = await r.json();
+      } catch {}
+    },
+
+    async loadFiles() {
+      try {
+        const r = await fetch(`/api/files?q=${encodeURIComponent(this.fileSearch)}`);
+        const d = await r.json();
+        this.files = d.files || [];
+      } catch {}
+    },
+
+    async searchFiles() {
+      await this.loadFiles();
+    },
+
+    async loadServerSettings() {
+      try {
+        const r = await fetch('/api/settings');
+        const s = await r.json();
+        this.currentProvider = s.llm_provider;
+        this.currentModel = s.llm_model;
+        this.dataPath = s.data_path?.split(/[/\\]/).slice(-2).join('/') || s.data_path;
+        this.settingsForm.llm_provider = s.llm_provider;
+        this.settingsForm.llm_model = s.llm_model;
+        this.settingsForm.llm_base_url = s.llm_base_url || '';
+        this.settingsForm.data_path = s.data_path || '';
+      } catch {}
+    },
+
+    // ── File selection ─────────────────────────────────────────
+    async selectFile(file) {
+      this.selectedFile = file;
+      this.openSheets = [];
+      this.kgEdges = [];
+      this.sheetData = null;
+      this.clearSelection();
+
+      // Load schema + KG in parallel, then load the first sheet
+      try {
+        const r = await fetch(`/api/schema?path=${encodeURIComponent(file.path)}`);
+        if (r.ok) {
+          this.schemaDetail = await r.json();
+          this.openSheets = this.schemaDetail.sheets?.slice(0, 1).map(s => s.sheet_name) || [];
+          const first = this.schemaDetail.sheets?.[0];
+          if (first) {
+            this.detectedHeaderRow = first.header_row || 0;
+            await this.loadSheet(file.path, first.sheet_name);
+          }
+        }
+      } catch (e) {
+        this.showToast('Failed to load file: ' + e.message, 'error');
+      }
+      try {
+        const r2 = await fetch('/api/graph');
+        const g = await r2.json();
+        this.kgEdges = (g.edges || []).filter(e =>
+          e.source.includes(file.path) || e.target.includes(file.path)
+        );
+      } catch {}
+    },
+
+    // ── Spreadsheet overlay ────────────────────────────────────
+    async loadSheet(filePath, sheetName, offset = 0) {
+      this.sheetLoading = true;
+      this.clearSelection();
+      try {
+        const qs = new URLSearchParams({
+          path: filePath, offset: String(offset), limit: '500',
+        });
+        if (sheetName) qs.set('sheet', sheetName);
+        const r = await fetch('/api/sheet-data?' + qs);
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ detail: 'unknown' }));
+          throw new Error(err.detail || r.statusText);
+        }
+        this.sheetData = await r.json();
+        // update the header-row hint from the matching schema entry
+        const meta = this.schemaDetail?.sheets?.find(s => s.sheet_name === this.sheetData.sheet_name);
+        this.detectedHeaderRow = meta?.header_row ?? 0;
+      } catch (e) {
+        this.showToast('Could not load sheet: ' + e.message, 'error');
+      } finally {
+        this.sheetLoading = false;
+      }
+    },
+
+    async loadMoreRows() {
+      if (!this.sheetData || !this.selectedFile) return;
+      const newOffset = this.sheetData.offset + this.sheetData.rows.length;
+      this.sheetLoading = true;
+      try {
+        const qs = new URLSearchParams({
+          path: this.selectedFile.path,
+          sheet: this.sheetData.sheet_name,
+          offset: String(newOffset),
+          limit: String(this.sheetData.limit),
+        });
+        const r = await fetch('/api/sheet-data?' + qs);
+        const more = await r.json();
+        this.sheetData.rows.push(...more.rows);
+      } catch (e) {
+        this.showToast('Failed to load more: ' + e.message, 'error');
+      } finally {
+        this.sheetLoading = false;
+      }
+    },
+
+    // ── Cell selection ─────────────────────────────────────────
+    onCellDown(ri, ci, ev) {
+      this.selDragging = true;
+      this.selStart = { r: ri, c: ci };
+      this.selEnd = { r: ri, c: ci };
+    },
+    onCellOver(ri, ci) {
+      if (!this.selDragging) return;
+      this.selEnd = { r: ri, c: ci };
+    },
+    onCellUp() {
+      this.selDragging = false;
+    },
+    clearSelection() {
+      this.selStart = null;
+      this.selEnd = null;
+      this.selDragging = false;
+    },
+    cellClass(ri, ci) {
+      if (!this.selStart || !this.selEnd) return '';
+      const rmin = Math.min(this.selStart.r, this.selEnd.r);
+      const rmax = Math.max(this.selStart.r, this.selEnd.r);
+      const cmin = Math.min(this.selStart.c, this.selEnd.c);
+      const cmax = Math.max(this.selStart.c, this.selEnd.c);
+      if (ri < rmin || ri > rmax || ci < cmin || ci > cmax) return '';
+      if (ri === this.selStart.r && ci === this.selStart.c) return 'selected';
+      return 'in-range';
+    },
+    getSelectionA1() {
+      if (!this.selStart || !this.selEnd || !this.sheetData) return '';
+      const rmin = Math.min(this.selStart.r, this.selEnd.r) + this.sheetData.offset + 1;
+      const rmax = Math.max(this.selStart.r, this.selEnd.r) + this.sheetData.offset + 1;
+      const cmin = Math.min(this.selStart.c, this.selEnd.c);
+      const cmax = Math.max(this.selStart.c, this.selEnd.c);
+      const a1 = (r, c) => this.colIndexToLetter(c + 1) + r;
+      return rmin === rmax && cmin === cmax
+        ? a1(rmin, cmin)
+        : `${a1(rmin, cmin)}:${a1(rmax, cmax)}`;
+    },
+    getSelectionValue() {
+      if (!this.selStart || !this.sheetData) return '';
+      const row = this.sheetData.rows[this.selStart.r];
+      if (!row) return '';
+      const v = row[this.selStart.c];
+      return (v === null || v === undefined) ? '' : String(v);
+    },
+    colIndexToLetter(idx) {
+      let s = '';
+      while (idx > 0) { const m = (idx - 1) % 26; s = String.fromCharCode(65 + m) + s; idx = Math.floor((idx - 1) / 26); }
+      return s;
+    },
+    addSelectionToChat() {
+      const range = this.getSelectionA1();
+      if (!range || !this.sheetData || !this.selectedFile) return;
+      const label = `${this.selectedFile.name.replace(/\.(xlsx|xlsm|xls|csv)$/i, '')}!${this.sheetData.sheet_name}!${range}`;
+      // Prevent duplicates
+      if (this.references.some(r => r.label === label)) return;
+      this.references.push({
+        label,
+        file_path: this.selectedFile.path,
+        sheet_name: this.sheetData.sheet_name,
+        range,
+      });
+      // Focus the chat input
+      setTimeout(() => {
+        const ta = document.querySelector('aside textarea');
+        if (ta) ta.focus();
+      }, 50);
+    },
+    removeReference(idx) {
+      this.references.splice(idx, 1);
+    },
+
+    isPivotSheet(sheetName) {
+      const s = this.schemaDetail?.sheets?.find(x => x.sheet_name === sheetName);
+      return s && (s.sheet_type === 'pivot_summary' || (s.pivot_tables && s.pivot_tables.length > 0));
+    },
+
+    // ── Graph view (Knowledge Graph visualisation) ───────────
+    setView(view) {
+      this.mainView = view;
+      if (view === 'graph') {
+        this.$nextTick(() => this.loadGraph());
+      }
+    },
+
+    async loadGraph() {
+      try {
+        const r = await fetch('/api/graph');
+        const g = await r.json();
+        this.graphStats = g.stats;
+        this.renderGraph(g.nodes, g.edges);
+      } catch (e) {
+        this.showToast('Could not load graph: ' + e.message, 'error');
+      }
+    },
+
+    renderGraph(nodes, edges) {
+      if (typeof vis === 'undefined') {
+        this.showToast('Graph library not loaded yet', 'error');
+        return;
+      }
+
+      const visNodes = nodes.map(n => ({
+        id: n.id,
+        label: this.truncateLabel(n.label, 28),
+        title: this.nodeTooltip(n),
+        shape: n.type === 'file' ? 'box' : 'dot',
+        size: n.type === 'file' ? 18 : 14 + Math.min(10, Math.log2((n.row_count || 1) + 1)),
+        color: {
+          background: this.nodeColor(n),
+          border: this.nodeBorder(n),
+          highlight: { background: this.nodeColor(n), border: '#fff' },
+        },
+        font: { color: '#e6edf3', size: 12, face: 'Inter' },
+        borderWidth: 2,
+        _meta: n,
+      }));
+
+      const visEdges = edges
+        .filter(e => e.type !== 'HAS_SHEET' || this.showFileEdges)
+        .map((e, i) => ({
+          id: `e${i}`,
+          from: e.source,
+          to: e.target,
+          color: {
+            color: this.edgeColor(e.type),
+            opacity: e.type === 'HAS_SHEET' ? 0.35 : 0.7,
+          },
+          width: e.type === 'AGGREGATES_FROM' ? 2 : 1.2,
+          dashes: e.type === 'AGGREGATES_FROM' ? [6, 4] : false,
+          arrows: e.type === 'AGGREGATES_FROM' ? { to: { enabled: true, scaleFactor: 0.6 } } : undefined,
+          title: this.edgeTooltip(e),
+          smooth: { type: 'continuous' },
+          _meta: e,
+        }));
+
+      this.graphNodes = new vis.DataSet(visNodes);
+      this.graphEdges = new vis.DataSet(visEdges);
+
+      const container = this.$refs.graphNetwork;
+      const data = { nodes: this.graphNodes, edges: this.graphEdges };
+      const options = {
+        physics: {
+          enabled: this.graphPhysics,
+          solver: 'forceAtlas2Based',
+          forceAtlas2Based: { gravitationalConstant: -40, springLength: 140, springConstant: 0.06, damping: 0.55 },
+          stabilization: { iterations: 180, updateInterval: 20 },
+        },
+        nodes: { shape: 'dot', shadow: { enabled: true, color: 'rgba(0,0,0,.4)', size: 6, x: 0, y: 2 } },
+        edges: { selectionWidth: 2 },
+        interaction: { hover: true, tooltipDelay: 200, zoomSpeed: 0.5 },
+      };
+
+      if (this.graphNet) this.graphNet.destroy();
+      this.graphNet = new vis.Network(container, data, options);
+
+      this.graphNet.on('click', (ev) => {
+        if (ev.nodes.length > 0) {
+          this.onGraphNodeClick(ev.nodes[0]);
+        } else {
+          this.selectedNode = null;
+          this.selectedNodeEdges = [];
+        }
+      });
+
+      this.graphNet.on('stabilizationIterationsDone', () => {
+        if (!this.graphPhysics) this.graphNet.setOptions({ physics: { enabled: false } });
+      });
+    },
+
+    onGraphNodeClick(nodeId) {
+      const node = this.graphNodes.get(nodeId);
+      if (!node) return;
+      this.selectedNode = node._meta;
+      // Find edges involving this node
+      this.selectedNodeEdges = this.graphEdges.get()
+        .filter(e => e.from === nodeId || e.to === nodeId)
+        .map(e => ({ ...e._meta, _otherId: e.from === nodeId ? e.to : e.from }))
+        .sort((a, b) => (b.weight || 0) - (a.weight || 0));
+    },
+
+    edgeOtherLabel(edge) {
+      const otherId = edge._otherId || (edge.source === this.selectedNode?.id ? edge.target : edge.source);
+      const n = this.graphNodes?.get(otherId);
+      return n?.label || otherId;
+    },
+
+    updateGraphPhysics() {
+      if (!this.graphNet) return;
+      this.graphNet.setOptions({ physics: { enabled: this.graphPhysics } });
+    },
+
+    fitGraph() {
+      if (this.graphNet) this.graphNet.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+    },
+
+    async openNodeInSheet() {
+      if (!this.selectedNode) return;
+      const fp = this.selectedNode.file_path;
+      const sheetName = this.selectedNode.sheet_name;
+      const file = this.files.find(f => f.path === fp);
+      if (!file) {
+        this.showToast('File not in the current index', 'error');
+        return;
+      }
+      await this.selectFile(file);
+      if (sheetName) await this.loadSheet(fp, sheetName);
+      this.setView('sheet');
+      this.selectedNode = null;
+    },
+
+    nodeColor(n) {
+      if (n.type === 'file') return '#79c0ff';
+      if (n.sheet_type === 'pivot_summary') return '#c084fc';
+      if (n.sheet_type === 'detail') return '#34d399';
+      return '#f59e0b';
+    },
+    nodeBorder(n) {
+      if (n.type === 'file') return '#388bfd';
+      if (n.sheet_type === 'pivot_summary') return '#a855f7';
+      if (n.sheet_type === 'detail') return '#10b981';
+      return '#d97706';
+    },
+    edgeColor(t) {
+      if (t === 'AGGREGATES_FROM') return '#34d399';
+      if (t === 'SHARES_COLUMN') return '#2f81f7';
+      return '#30363d';
+    },
+    truncateLabel(s, n) {
+      return (s || '').length > n ? s.slice(0, n - 1) + '…' : (s || '');
+    },
+    nodeTooltip(n) {
+      const lines = [n.label];
+      if (n.type === 'sheet') {
+        lines.push(`${(n.row_count || 0).toLocaleString()} rows · ${n.col_count} cols`);
+        if (n.sheet_type && n.sheet_type !== 'data') lines.push(`type: ${n.sheet_type}`);
+      }
+      return lines.join('\n');
+    },
+    edgeTooltip(e) {
+      const lines = [e.type.replace('_', ' ').toLowerCase()];
+      if (e.shared_columns?.length) {
+        lines.push('columns: ' + e.shared_columns.slice(0, 5).join(', ') + (e.shared_columns.length > 5 ? ' +' + (e.shared_columns.length - 5) : ''));
+      }
+      if (e.relationship) lines.push(e.relationship);
+      return lines.join('\n');
+    },
+
+    toggleSheet(name) {
+      if (this.openSheets.includes(name)) {
+        this.openSheets = this.openSheets.filter(s => s !== name);
+      } else {
+        this.openSheets.push(name);
+      }
+    },
+
+    insertColumnRef(colName) {
+      this.input += (this.input ? ' ' : '') + `"${colName}"`;
+      document.querySelector('textarea').focus();
+    },
+
+    openRelated(edge) {
+      const parts = edge.target.replace('sheet::', '').split('::');
+      this.showToast(`Related via: ${edge.shared_columns.slice(0, 3).join(', ')}`);
+    },
+
+    // ── Index ─────────────────────────────────────────────────
+    async runIndex(force = false) {
+      this.indexing = true;
+      try {
+        const url = force ? '/api/index?force=true' : '/api/index';
+        const r = await fetch(url, { method: 'POST' });
+        const d = await r.json();
+        const label = force ? 'Force re-indexed' : 'Indexed';
+        this.showToast(`${label}: +${d.added} added, ${d.updated} updated, ${d.kg_edges} KG links`);
+        await this.loadFiles();
+        await this.loadStats();
+      } catch (e) {
+        this.showToast('Indexing failed: ' + e.message, 'error');
+      } finally {
+        this.indexing = false;
+      }
+    },
+
+    // ── Chat ──────────────────────────────────────────────────
+    async send() {
+      const text = this.input.trim();
+      const refs = this.references.slice();
+      if (!text && refs.length === 0) return;
+      if (this.streaming) return;
+
+      // Build the message with reference context prepended
+      let composed = text;
+      if (refs.length > 0) {
+        const lines = refs.map(r =>
+          `[reference] file_path=${r.file_path}; sheet=${r.sheet_name}; range=${r.range}`
+        );
+        composed = lines.join('\n') + (text ? '\n\n' + text : '\n\nAnalyse the referenced cells above.');
+      }
+
+      this.input = '';
+      this.references = [];
+      this.$nextTick(() => {
+        const ta = document.querySelector('aside textarea');
+        if (ta) ta.style.height = 'auto';
+      });
+
+      // Display the user message with chip pills (not the full composed prompt)
+      const displayContent = (refs.length > 0
+        ? refs.map(r => `@${r.label}`).join(' ') + (text ? ' ' + text : '')
+        : text);
+      this.messages.push({ role: 'user', content: displayContent });
+
+      const history = this.messages.slice(0, -1)
+        .filter(m => m.role !== 'assistant' || m.content)
+        .map(m => ({ role: m.role, content: m.content || '' }));
+
+      const aIdx = this.messages.length;
+      this.messages.push({
+        role: 'assistant', content: '', events: [], streaming: true,
+        usage: null, thinkingOpen: true, startedAt: Date.now(), elapsedMs: 0,
+      });
+
+      this.streaming = true;
+      this.scrollToBottom();
+
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: composed, history }),
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const ev = JSON.parse(line.slice(6));
+              this.handleEvent(aIdx, ev);
+            } catch {}
+          }
+          this.scrollToBottom();
+        }
+      } catch (e) {
+        this.messages[aIdx].events.push({ type: 'error', message: e.message });
+      } finally {
+        const m = this.messages[aIdx];
+        m.streaming = false;
+        m.elapsedMs = Date.now() - (m.startedAt || Date.now());
+        m.thinkingOpen = false;
+        this.streaming = false;
+        this.scrollToBottom();
+      }
+    },
+
+    handleEvent(idx, ev) {
+      const msg = this.messages[idx];
+      if (!msg) return;
+      if (ev.type === 'text') {
+        msg.content += ev.content;
+      } else if (ev.type === 'tool_start') {
+        ev.startedAt = Date.now();
+        msg.events = msg.events.filter(e => !(e.type === 'tool_start' && e.name === ev.name));
+        msg.events.push(ev);
+      } else if (ev.type === 'tool_end') {
+        const prev = msg.events.find(e => e.type === 'tool_start' && e.name === ev.name);
+        if (prev?.startedAt) ev.ms = Date.now() - prev.startedAt;
+        msg.events = msg.events.filter(e => !(e.type === 'tool_start' && e.name === ev.name));
+        // Preserve args from the matching tool_start (backend tool_end events don't include them)
+        if (prev?.args) ev.args = prev.args;
+        msg.events.push(ev);
+      } else if (ev.type === 'error') {
+        msg.events.push(ev);
+      } else if (ev.type === 'usage') {
+        msg.usage = ev;
+        this.sessionTokens += ev.total_tokens || 0;
+        this.sessionCost += ev.cost_usd || 0;
+      }
+    },
+
+    // ── Thinking timeline helpers ─────────────────────────────
+    countSteps(msg) {
+      return msg.events.filter(e => e.type === 'tool_end').length;
+    },
+    currentStepLabel(msg) {
+      const running = msg.events.filter(e => e.type === 'tool_start').slice(-1)[0];
+      return running ? this.toolLabel(running.name) + '…' : 'Thinking…';
+    },
+    formatWrites(writes) {
+      if (!writes || !Array.isArray(writes)) return '';
+      return writes.map(w => {
+        const rhs = w.formula || (w.value !== undefined ? JSON.stringify(w.value) : '');
+        return `${w.cell} = ${rhs}`;
+      }).join('\n');
+    },
+
+    sendSuggestion(s) {
+      this.input = s;
+      this.send();
+    },
+
+    clearChat() {
+      this.messages = [];
+      this.sessionTokens = 0;
+      this.sessionCost = 0;
+    },
+
+    // ── Settings ──────────────────────────────────────────────
+    async browseFolder() {
+      this.browsingFolder = true;
+      try {
+        const r = await fetch('/api/browse-folder');
+        const d = await r.json();
+        if (d.path) {
+          this.settingsForm.data_path = d.path;
+        }
+      } catch (e) {
+        this.showToast('Could not open folder picker: ' + e.message, 'error');
+      } finally {
+        this.browsingFolder = false;
+      }
+    },
+
+    async saveSettings() {
+      try {
+        const r = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.settingsForm),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(err.detail || 'Server error');
+        }
+        const s = await r.json();
+        this.currentProvider = s.llm_provider;
+        this.currentModel = s.llm_model;
+        this.dataPath = s.data_path?.split(/[/\\]/).slice(-2).join('/') || s.data_path;
+        this.showSettings = false;
+        this.showToast('Settings saved');
+        // Refresh files in case data path changed
+        await this.loadFiles();
+        await this.loadStats();
+      } catch (e) {
+        this.showToast('Failed to save: ' + e.message, 'error');
+      }
+    },
+
+    // ── Token display ─────────────────────────────────────────
+    fmtTokens(n) {
+      if (!n) return '0';
+      return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+    },
+    fmtCost(c, provider) {
+      if (provider === 'ollama' || !c) return 'local';
+      if (c < 0.0001) return c === 0 ? 'free' : '< $0.0001';
+      if (c < 0.01) return '$' + c.toFixed(4);
+      return '$' + c.toFixed(3);
+    },
+    fmtSessionCost(c) {
+      if (c === 0) return '$0.00';
+      if (c < 0.01) return '$' + c.toFixed(4);
+      return '$' + c.toFixed(3);
+    },
+
+    // ── Rendering ─────────────────────────────────────────────
+    renderMarkdown(text) {
+      if (!text) return '';
+      try {
+        const html = marked.parse(text, { breaks: true, gfm: true });
+        this.$nextTick(() => {
+          document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+        });
+        return html;
+      } catch {
+        return text;
+      }
+    },
+
+    resultEntries(result) {
+      if (!result) return [];
+      return Object.entries(result).filter(([k]) => !k.startsWith('_'));
+    },
+
+    renderChart(el, jsonStr) {
+      if (!jsonStr || typeof Plotly === 'undefined') return;
+      try {
+        const fig = JSON.parse(jsonStr);
+        const layout = {
+          ...fig.layout,
+          paper_bgcolor: 'rgba(0,0,0,0)',
+          plot_bgcolor: '#161b22',
+          font: { color: '#8b949e', size: 11, family: 'Inter, system-ui, sans-serif' },
+          title: fig.layout?.title
+            ? { ...fig.layout.title, font: { color: '#e6edf3', size: 13 } }
+            : undefined,
+          xaxis: { ...(fig.layout?.xaxis || {}), gridcolor: '#21262d', linecolor: '#30363d', tickcolor: '#30363d', tickfont: { color: '#8b949e' } },
+          yaxis: { ...(fig.layout?.yaxis || {}), gridcolor: '#21262d', linecolor: '#30363d', tickcolor: '#30363d', tickfont: { color: '#8b949e' } },
+          legend: { ...(fig.layout?.legend || {}), font: { color: '#8b949e' }, bgcolor: 'rgba(0,0,0,0)' },
+          margin: { t: fig.layout?.title ? 44 : 24, r: 16, b: 48, l: 56 },
+          height: 300,
+        };
+        Plotly.react(el, fig.data, layout, {
+          responsive: true,
+          displayModeBar: true,
+          displaylogo: false,
+          modeBarButtonsToRemove: ['sendDataToCloud', 'lasso2d', 'select2d'],
+        });
+      } catch (e) {
+        el.innerHTML = `<div class="p-3 text-xs text-red-400">Chart render error: ${e.message}</div>`;
+      }
+    },
+
+    toolLabel(name) {
+      const labels = {
+        search_data: 'Searching knowledge graph',
+        get_schema: 'Reading schema',
+        run_analysis: 'Running analysis',
+        read_cell_range: 'Reading cells',
+        modify_sheet: 'Writing to sheet',
+        list_files: 'Listing files',
+      };
+      return labels[name] || name;
+    },
+
+    formatArgs(args) {
+      if (!args) return '';
+      // Prefer the most informative known keys
+      const order = ['query', 'range', 'sheet_name', 'file_path', 'code'];
+      for (const k of order) {
+        if (args[k] !== undefined) {
+          const v = typeof args[k] === 'string' ? args[k] : JSON.stringify(args[k]);
+          return v.length > 60 ? v.slice(0, 57) + '…' : v;
+        }
+      }
+      const v = Object.values(args)[0];
+      if (typeof v === 'string') return v.length > 60 ? v.slice(0, 57) + '…' : v;
+      if (Array.isArray(v)) return `${v.length} item${v.length === 1 ? '' : 's'}`;
+      return '';
+    },
+
+    dtypeColor(dtype) {
+      if (!dtype) return 'bg-surface-3 text-muted';
+      const d = dtype.toLowerCase();
+      if (d.includes('int') || d.includes('float')) return 'bg-blue-500/10 text-blue-400';
+      if (d.includes('date') || d.includes('time')) return 'bg-purple-500/10 text-purple-400';
+      if (d.includes('bool')) return 'bg-yellow-500/10 text-yellow-400';
+      return 'bg-surface-3 text-muted';
+    },
+
+    shortDtype(dtype) {
+      if (!dtype) return '?';
+      const map = { 'object': 'str', 'int64': 'int', 'float64': 'f64', 'datetime64[ns]': 'date', 'bool': 'bool' };
+      return map[dtype] || dtype.split('[')[0].slice(0, 5);
+    },
+
+    // ── Helpers ───────────────────────────────────────────────
+    scrollToBottom() {
+      this.$nextTick(() => {
+        const el = document.getElementById('chat-scroll');
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+
+    autoResize(ev) {
+      const el = ev.target;
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    },
+
+    showToast(message, type = 'info') {
+      this.toast = { visible: true, message, type };
+      setTimeout(() => { this.toast.visible = false; }, 3500);
+    },
+  };
+}
+</script>
+</body>
+</html>

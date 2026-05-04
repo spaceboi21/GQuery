@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "excel-intelligence": {
+      "command": "python",
+      "args": ["src/server.py"],
+      "env": {
+        "XIA_DATA_PATH": "C:/Users/XC/Documents/Excel"
+      }
+    }
+  }
+}
